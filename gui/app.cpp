@@ -154,6 +154,12 @@ void App::toast(std::string title, std::string text, ImU32 color) {
 
 void App::open_dialog(const std::string& name) {
     if (name == "mission") mission_form_.open = true;
+    // done:<id>[@<секунды>] — выполнить задачу, как кнопкой «Выполнено», и остановить катсцену (для проверки).
+    if (starts_with(name, "done:")) {
+        auto at = name.find('@');
+        complete(name.substr(5, at == std::string::npos ? std::string::npos : at - 5));
+        if (at != std::string::npos && cutscene_.active) cutscene_.frozen = std::strtof(name.c_str() + at + 1, nullptr);
+    }
     // edit:<id> — окно правки задачи (для снимков).
     if (starts_with(name, "edit:"))
         if (const Task* t = st_.find(name.substr(5))) edit_form_ = EditForm{true, t->id, t->title, t->side, t->difficulty, t->plan == "week" ? 1 : 0};
@@ -192,7 +198,7 @@ void App::open_dialog(const std::string& name) {
         start_training();
         battle_.speed = 60;
     }
-    // cutscene:<размах 1–6>@<секунды> — катсцена выполненной задачи, остановленная на нужном моменте (для снимков).
+    // cutscene:<размах 1–6>[@<секунды>] — катсцена выполненной задачи: вживую или остановленная на нужном моменте (для снимков).
     if (starts_with(name, "cutscene:")) {
         auto at = name.find('@');
         int tier = std::clamp(std::atoi(name.c_str() + 9), 1, 6);
@@ -205,7 +211,7 @@ void App::open_dialog(const std::string& name) {
         Loot loot{t.rewards.xp, t.rewards.gold, "", "", 0};
         if (tier >= 5) loot = Loot{t.rewards.xp, t.rewards.gold, "Корона Хранителя", "+1 к атаке, защите и магии", 3};
         play_cutscene(t, loot);
-        cutscene_.frozen = at == std::string::npos ? 0.0f : std::strtof(name.c_str() + at + 1, nullptr);
+        if (at != std::string::npos) cutscene_.frozen = std::strtof(name.c_str() + at + 1, nullptr);  // без @ — играет вживую
     }
 }
 

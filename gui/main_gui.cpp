@@ -216,10 +216,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     Options opt = parse_options();
     bool shot = !opt.screenshot.empty();
 
-    // Один экземпляр: повторный запуск просто показывает уже открытое окно.
+    // Один экземпляр на папку данных: повторный запуск просто показывает уже открытое окно.
+    // С другой папкой (демо, SQ_HOME) окно открывается рядом и не мешает основному.
     HANDLE single = nullptr;
     if (!shot) {
-        single = CreateMutexW(nullptr, TRUE, L"Local\\SecurityQuest.Gui");
+        std::error_code ec;
+        auto home = std::hash<std::string>{}(from_path(fs::weakly_canonical(data_home(), ec)));
+        std::wstring name = L"Local\\SecurityQuest.Gui." + std::to_wstring(home);
+        single = CreateMutexW(nullptr, TRUE, name.c_str());
         if (GetLastError() == ERROR_ALREADY_EXISTS) {
             if (HWND existing = FindWindowW(kClassName, nullptr)) PostMessageW(existing, WM_SHOW_EXISTING, 0, 0);
             return 0;
