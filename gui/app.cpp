@@ -102,16 +102,21 @@ void App::celebrate(const Task& t, int level_before) {
     }
     int after = level_of(st_.earned.xp).level;
     if (after > level_before) loot.level_up = after;
-    watch_task(t, loot);
+    play_cutscene(t, loot);
 }
 
-void App::watch_task(const Task& t, const Loot& loot) {
+void App::play_cutscene(const Task& t, const Loot& loot) {
     static const char* verdicts[6] = {"Тварь изгнана!", "Монстры повержены!", "Славная победа!", "Блестящая победа!", "Великая победа!",
                                       "Легендарная победа!"};
-    int tier = quest::celebration_tier(t);
-    watch(quest::task_skirmish(world_, t), (t.side ? "Квест «" : "Миссия «") + t.title + "»", t.rewards.describe(), verdicts[tier - 1]);
-    battle_.loot = loot;
-    battle_.tier = tier;
+    cutscene_ = Cutscene{};
+    cutscene_.active = true;
+    cutscene_.tier = quest::celebration_tier(t);
+    cutscene_.title = (t.side ? "Квест «" : "Миссия «") + t.title + "»";
+    cutscene_.verdict = verdicts[cutscene_.tier - 1];
+    cutscene_.loot = loot;
+    cutscene_.ours = world_.army.stacks;
+    cutscene_.foes = quest::task_monsters(t);
+    cutscene_.born = clock();
 }
 
 void App::tick() {
@@ -134,12 +139,12 @@ void App::tick() {
 }
 
 bool App::busy() const {
-    return !toasts_.empty() || battle_.active || (page == Page::Campaign && window_visible);
+    return !toasts_.empty() || battle_.active || cutscene_.active || (page == Page::Campaign && window_visible);
 }
 
 int App::frame_cap_ms() const {
     // Бою и сценкам нужна плавность, а дрейфу тумана на карте хватает 30 кадров в секунду.
-    return battle_.active || !toasts_.empty() ? 0 : 33;
+    return battle_.active || cutscene_.active || !toasts_.empty() ? 0 : 33;
 }
 
 void App::toast(std::string title, std::string text, ImU32 color) {
@@ -187,10 +192,10 @@ void App::open_dialog(const std::string& name) {
         start_training();
         battle_.speed = 60;
     }
-    // skirmish[:<размах 1–6>]@<ход> — схватка выполненной задачи, остановленная на нужном ходе (для снимков).
-    if (starts_with(name, "skirmish")) {
+    // cutscene:<размах 1–6>@<секунды> — катсцена выполненной задачи, остановленная на нужном моменте (для снимков).
+    if (starts_with(name, "cutscene:")) {
         auto at = name.find('@');
-        int tier = name.size() > 9 && name[8] == ':' ? std::clamp(std::atoi(name.c_str() + 9), 1, 6) : 5;
+        int tier = std::clamp(std::atoi(name.c_str() + 9), 1, 6);
         Task t;
         t.id = std::format("M{}", tier);
         t.side = tier <= 3;
@@ -199,10 +204,8 @@ void App::open_dialog(const std::string& name) {
         t.rewards = t.side ? side_rewards(cfg_, t.difficulty) : mission_rewards(cfg_, t.difficulty);
         Loot loot{t.rewards.xp, t.rewards.gold, "", "", 0};
         if (tier >= 5) loot = Loot{t.rewards.xp, t.rewards.gold, "Корона Хранителя", "+1 к атаке, защите и магии", 3};
-        watch_task(t, loot);
-        battle_.progress = at == std::string::npos ? 0 : std::strtof(name.c_str() + at + 1, nullptr);
-        battle_.speed = 0.0001f;
-        battle_.card_shown = clock() - 3;  // на снимке награда уже досчитана
+        play_cutscene(t, loot);
+        cutscene_.frozen = at == std::string::npos ? 0.0f : std::strtof(name.c_str() + at + 1, nullptr);
     }
 }
 
@@ -237,7 +240,9 @@ void App::frame() {
     }
     ImGui::BeginChild("page", ImVec2(0, 0));
     ImGui::PushStyleColor(ImGuiCol_ChildBg, alpha(col::panel, 0.94f));  // вложенные панели (карта, летопись) — на камне
-    if (battle_.active) {
+    if (cutscene_.active) {
+        cutscene_view();
+    } else if (battle_.active) {
         battle_view();
     } else {
         switch (page) {
@@ -353,7 +358,7 @@ void App::draw_sidebar() {
     float ih = px(compact ? 38 : 44);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, px(compact ? 2 : 4)));
     for (auto& it : items) {
-        bool active = page == it.page && !battle_.active;
+        bool active = page == it.page && !battle_.active && !cutscene_.active;
         ImVec2 p = ImGui::GetCursorScreenPos();
         ImGui::PushID(it.label);
         if (ImGui::InvisibleButton("nav", ImVec2(w, ih))) {
@@ -366,6 +371,7 @@ void App::draw_sidebar() {
                 toast("Отступление", "Бой прерван, армия вернулась в город", col::orange);
             }
             battle_.active = false;
+            cutscene_.active = false;
         }
         bool hovered = ImGui::IsItemHovered();
         ImGui::PopID();

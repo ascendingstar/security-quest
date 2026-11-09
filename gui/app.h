@@ -159,15 +159,23 @@ private:
         int pending_spell = -1;  // выбранное заклинание ждёт цель
         Loot loot;               // награда для победного экрана; пусто — только текст reward
         double card_shown = -1e9;  // когда появилась итоговая плашка (-1e9 — ещё нет) — для счёта наград
-        // Схватка выполненной задачи: размах 1–6 (quest::celebration_tier), 0 — обычный бой.
-        int tier = 0;
-        float flash = 0;           // белая вспышка добивающего удара
-        double next_firework = 0;  // салют над победной плашкой
-        int fireworks = 0;
     } battle_;
 
-    void celebrate(const Task& t, int level_before);  // схватка с тварями и победный экран, размах — по сложности
-    void watch_task(const Task& t, const Loot& loot);
+    // Катсцена выполненной задачи (cutscene.cpp): армия Хранителя громит тварей из разлома, затем победная
+    // плашка с наградой. Размах — quest::celebration_tier: от трёх бесёнков до Исполина Бездны.
+    struct Cutscene {
+        bool active = false;
+        int tier = 1;
+        std::string title, verdict;
+        Loot loot;
+        std::vector<quest::Stack> ours, foes;
+        double born = 0;
+        double card_shown = -1e9;  // когда появилась плашка; -1e9 — ещё идёт действие
+        float frozen = -1;         // для снимков: сцена стоит на этой секунде
+    } cutscene_;
+    void celebrate(const Task& t, int level_before);  // катсцена и победная плашка, размах — по сложности
+    void play_cutscene(const Task& t, const Loot& loot);
+    void cutscene_view();
 };
 
 }  // namespace sq::gui

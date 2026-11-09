@@ -23,6 +23,12 @@ namespace sq::gui {
 
 // Фигурка бойца или монстра — та же, что на поле боя (battle.cpp). feet — точка между ступнями.
 void draw_figure(ImDrawList* dl, ImVec2 feet, float h, const quest::Stack& s, bool ours, float time, int seed = 0);
+// Фигурка в движении: walk — фаза шага, stride — размах шага 0..1, strike — замах 0..1,
+// angle — наклон (павшие падают навзничь), fade — непрозрачность.
+void draw_actor(ImDrawList* dl, ImVec2 feet, float h, const quest::Stack& s, bool ours, float walk, float stride, float strike, float time, int seed,
+                float angle = 0, float fade = 1);
+// Поле боя целиком: небо, горы, земля и трава в цвете главы — фон катсцен.
+void draw_battlefield(ImDrawList* dl, ImVec2 p0, ImVec2 size, uint32_t color, float time);
 // Маленькая сцена: небо и земля в цвете главы — фон для портретов врагов.
 void draw_scene(ImDrawList* dl, ImVec2 p0, ImVec2 size, uint32_t color);
 // Эмблема программы: щит с замочной скважиной и скрещённые мечи, как на значке exe.

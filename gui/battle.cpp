@@ -21,8 +21,6 @@ namespace {
 
 constexpr float kActionTime = 0.8f;  // секунды на ход при скорости ×1
 constexpr float kImpact = 0.55f;     // доля хода, на которой удар достигает цели
-// Надпись перед схваткой выполненной задачи — по её размаху.
-const char* const kTierBanner[6] = {"Стычка!", "Схватка!", "В бой!", "Битва!", "Великая битва!", "Легендарная битва!"};
 
 // Поза фигуры: координаты в долях её роста от точки между ступнями (y вверх — отрицательный),
 // с отражением по направлению взгляда и поворотом (так падают павшие).
@@ -364,6 +362,18 @@ void draw_figure(ImDrawList* dl, ImVec2 feet, float h, const quest::Stack& s, bo
     else draw_monster(pose, hash_of(s.name), tint(s.color), s.icon == "boss", 0, 0, 0, time);
 }
 
+void draw_actor(ImDrawList* dl, ImVec2 feet, float h, const quest::Stack& s, bool ours, float walk, float stride, float strike, float time, int seed,
+                float angle, float fade) {
+    if (angle == 0) dl->AddEllipseFilled(ImVec2(feet.x, feet.y + 1), ImVec2(h * (s.icon == "boss" ? 0.32f : 0.2f), h * 0.05f), alpha(IM_COL32(0, 0, 0, 255), 0.35f * fade));
+    Pose pose{dl, feet, h, ours ? 1.0f : -1.0f, angle, fade};
+    if (ours) draw_soldier(pose, s.icon, s.elite, walk, stride, strike, time, seed);
+    else draw_monster(pose, hash_of(s.name), tint(s.color), s.icon == "boss", walk, stride, strike, time);
+}
+
+void draw_battlefield(ImDrawList* dl, ImVec2 p0, ImVec2 size, uint32_t color, float time) {
+    draw_backdrop(dl, p0, size, tint(color), time, false);
+}
+
 void draw_scene(ImDrawList* dl, ImVec2 p0, ImVec2 size, uint32_t color) {
     ImU32 c = tint(color);
     ImVec2 p1 = add(p0, size);
@@ -430,13 +440,7 @@ void App::battle_view() {
     int n = int(r.actions.size());
     bool open_end = b.live && !b.live->finished();
     float dt = std::min(ImGui::GetIO().DeltaTime, 0.05f);
-    float rate = b.speed;
-    // Добивающий удар большой схватки показываем в замедлении.
-    if (b.tier >= 5 && !b.live) {
-        float last = b.progress - float(n - 1);
-        if (last > 0.2f && last < 0.8f) rate *= 0.35f;
-    }
-    b.progress = std::min(b.progress + dt * rate / kActionTime, open_end ? float(n) : float(n) + 2.0f);
+    b.progress = std::min(b.progress + dt * b.speed / kActionTime, open_end ? float(n) : float(n) + 2.0f);
     bool waiting = open_end && b.live->player_turn() && !b.autoplay && b.progress >= float(n) - 1e-3f;
     float time = float(clock());
 
@@ -640,17 +644,6 @@ void App::battle_view() {
             } else if (a.kills >= 3) {
                 b.shake = std::max(b.shake, 3.0f);
             }
-            // Добивающий удар большой схватки: вспышка, тряска и сноп золотых искр.
-            if (b.tier >= 4 && i == n - 1) {
-                b.flash = b.tier >= 6 ? 1.0f : b.tier == 5 ? 0.8f : 0.55f;
-                b.shake = std::max(b.shake, 8.0f + 2.0f * float(b.tier));
-                spawn(Particle::Ring, center, ImVec2(0, 0), 1.0f, fig * (2.5f + 0.6f * float(b.tier)), col::gold);
-                for (int k = 0; k < 20 * b.tier; ++k) {
-                    float ang = float(k) / float(20 * b.tier) * 2 * kPi;
-                    float sp = H * (0.4f + 0.5f * float(hash_of(std::format("f{}", k)) % 100) / 100.0f);
-                    spawn(Particle::Spark, center, ImVec2(std::cos(ang) * sp, std::sin(ang) * sp - H * 0.25f), 0.9f, 2.5f, k % 2 ? col::gold : IM_COL32(255, 250, 230, 255));
-                }
-            }
             if (a.kind == BattleAction::ShieldBreak)
                 for (int k = 0; k < 18; ++k) {
                     float ang = float(k) / 18.0f * 2 * kPi;
@@ -675,30 +668,10 @@ void App::battle_view() {
     // Финал: золотой дождь за победу, дым за поражение.
     if (!open_end && b.progress >= float(n) + 0.4f && !b.finale) {
         b.finale = true;
-        for (int k = 0; k < (r.won ? (b.tier ? 15 + 18 * b.tier : 70) : 24); ++k) {
+        for (int k = 0; k < (r.won ? 70 : 24); ++k) {
             float x = p0.x + W * (0.2f + 0.6f * float(hash_of(std::format("c{}", k)) % 1000) / 1000.0f);
             if (r.won) spawn(Particle::Coin, ImVec2(x, p0.y - H * 0.05f * float(k % 7)), ImVec2(0, H * (0.2f + 0.1f * float(k % 5))), 3.0f, fig * 0.16f, col::gold);
             else spawn(Particle::Dust, ImVec2(x, p0.y + H * 0.72f), ImVec2(0, -H * 0.05f), 2.5f, fig * 0.45f, IM_COL32(30, 30, 36, 255));
-        }
-    }
-
-    // Салют над победной плашкой: чем больше задача, тем дольше и гуще, у легендарной — без конца.
-    if (b.tier >= 3 && b.finale && r.won) {
-        int limit = b.tier == 3 ? 2 : b.tier == 4 ? 4 : b.tier == 5 ? 8 : 1 << 30;
-        if (b.fireworks < limit && clock() >= b.next_firework) {
-            static const ImU32 colors[] = {col::gold, col::teal, col::violet, IM_COL32(255, 110, 90, 255), IM_COL32(130, 200, 255, 255)};
-            uint32_t h = hash_of(std::format("fw{}", b.fireworks));
-            ImVec2 at(p0.x + W * (0.12f + 0.76f * float(h % 1000) / 1000.0f), p0.y + H * (0.07f + 0.18f * float((h >> 10) % 1000) / 1000.0f));
-            ImU32 c = colors[(h >> 20) % 5];
-            int sparks = 30 + 6 * b.tier;
-            for (int k = 0; k < sparks; ++k) {
-                float ang = float(k) / float(sparks) * 2 * kPi;
-                float sp = H * (0.3f + 0.25f * float(hash_of(std::format("fw{}:{}", b.fireworks, k)) % 100) / 100.0f);
-                spawn(Particle::Spark, at, ImVec2(std::cos(ang) * sp, std::sin(ang) * sp), 1.1f, 2.5f, k % 4 ? c : IM_COL32(255, 255, 240, 255));
-            }
-            spawn(Particle::Ring, at, ImVec2(0, 0), 0.6f, fig * 1.6f, c);
-            ++b.fireworks;
-            b.next_firework = clock() + (b.tier >= 6 ? 0.35 : 0.55);
         }
     }
 
@@ -886,26 +859,6 @@ void App::battle_view() {
             q.y -= std::sin(t * kPi) * H * 0.08f;
             dl->AddCircleFilled(q, fig * 0.1f, IM_COL32(255, 255, 240, 255));
         }
-        // Схватка большой задачи: заклинание героя бьёт с неба молнией, у предводителя — толще и ярче.
-        if (b.tier >= 4 && tgt_side == 1 && act->kind == BattleAction::Spell && phase > 0.3f && phase < kImpact + 0.2f) {
-            ImU32 sc = kSpellColor[std::max(0, act->spell) % 5];
-            float grow = std::clamp((phase - 0.3f) / (kImpact - 0.3f), 0.0f, 1.0f);
-            float fade = phase < kImpact ? 1.0f : 1.0f - (phase - kImpact) / 0.2f;
-            ImVec2 top(tgt.x + fig * 0.4f, std::max(p0.y + H * 0.08f, tgt.y - H * 0.6f)), bottom(tgt.x, tgt.y + fig * 0.3f);
-            ImVec2 end = lerp(top, bottom, ease(grow));
-            std::vector<ImVec2> bolt;
-            auto seed = uint32_t(time * 30);  // зигзаг дрожит, меняясь 30 раз в секунду
-            for (int k = 0; k <= 9; ++k) {
-                ImVec2 q = lerp(top, end, float(k) / 9.0f);
-                if (k > 0 && k < 9) q.x += (float(hash_of(std::format("{}b{}", seed, k)) % 100) / 100.0f - 0.5f) * fig * 0.9f;
-                bolt.push_back(q);
-            }
-            float bw = fig * (r.theirs[size_t(act->target)].icon == "boss" ? 0.5f : 0.3f);
-            dl->AddPolyline(bolt.data(), int(bolt.size()), alpha(sc, 0.25f * fade), bw * 3, 0);
-            dl->AddPolyline(bolt.data(), int(bolt.size()), alpha(sc, 0.8f * fade), bw, 0);
-            dl->AddPolyline(bolt.data(), int(bolt.size()), alpha(IM_COL32(255, 255, 255, 255), fade), std::max(1.5f, bw * 0.35f), 0);
-            if (grow >= 1) dl->AddCircleFilled(bottom, fig * 0.9f * fade, alpha(sc, 0.3f * fade));
-        }
     }
 
     // Частицы поверх всего поля.
@@ -953,10 +906,6 @@ void App::battle_view() {
         dl->AddCircleFilled(ImVec2(p0.x + x, p0.y + y), 1.0f + float(k % 3) * 0.6f, alpha(mix(tint(chapter_color), IM_COL32(255, 255, 255, 255), 0.5f), 0.35f));
     }
 
-    // Вспышка добивающего удара.
-    b.flash *= std::exp(-dt * 4.5f);
-    if (b.flash > 0.01f) dl->AddRectFilled(origin, add(origin, size), alpha(IM_COL32(255, 250, 235, 255), 0.55f * b.flash));
-
     // Заголовок, надпись раунда, вступление.
     ImVec2 title_pos(origin.x + W * 0.5f, origin.y + 30 * ui_scale);
     ImVec2 tsz = fonts.display->CalcTextSizeA(26.0f * ui_scale, FLT_MAX, 0, b.title.c_str());
@@ -966,7 +915,7 @@ void App::battle_view() {
     if (b.progress < 0) {
         float k = ease(1.0f + b.progress);
         text_center(dl, fonts.display, 44.0f * ui_scale * (0.7f + 0.3f * k), ImVec2(origin.x + W * 0.5f, origin.y + H * 0.32f), alpha(col::gold, k),
-                    b.tier ? kTierBanner[b.tier - 1] : "Бой начинается!");
+                    "Бой начинается!");
     } else if (time - b.round_banner < 1.4 && b.progress < float(n)) {
         float age = float(time - b.round_banner);
         float k = age < 0.25f ? age / 0.25f : std::max(0.0f, 1.0f - (age - 0.9f) / 0.5f);
@@ -998,8 +947,7 @@ void App::battle_view() {
         for (size_t i = 0; i < r.ours.size() && i < r.our_losses.size(); ++i)
             if (r.our_losses[i] > 0) losses += std::format("{}{} −{}", losses.empty() ? "" : ",  ", r.ours[i].name, r.our_losses[i]);
         float lh = loot ? loot_height(b.loot) + (losses.empty() ? 0 : px(24)) : 0;
-        float stars = r.won && b.tier ? px(30) : 0;  // звёзды размаха над надписью
-        ImVec2 half(std::min(W * 0.4f, 440.0f * ui_scale), (loot ? px(82) + lh * 0.5f : 120.0f * ui_scale) + stars * 0.5f);
+        ImVec2 half(std::min(W * 0.4f, 440.0f * ui_scale), loot ? px(82) + lh * 0.5f : 120.0f * ui_scale);
         // Плашка не выходит за поле боя: на низком окне она поднимается к верхнему краю.
         c.y = std::max(origin.y + half.y + px(10), std::min(c.y, origin.y + H - half.y - px(10)));
         ImU32 edge = r.won ? col::gold : col::red;
@@ -1009,33 +957,14 @@ void App::battle_view() {
                                     alpha(IM_COL32(20, 14, 18, 255), 0.95f * t), alpha(IM_COL32(20, 14, 18, 255), 0.95f * t));
         dl->AddRect(a, z, alpha(edge, t), 8.0f, 2.0f);
         ornate_frame(dl, a, z, alpha(edge, t), 8.0f);
-        // Победа: за плашкой расходятся золотые лучи — чем больше задача, тем их больше и они ярче.
-        if (r.won) {
-            int rays = b.tier ? 8 + 4 * b.tier : 14;
-            float glow = b.tier ? 0.035f + 0.012f * float(b.tier) : 0.06f, reach = 1.3f + 0.1f * float(b.tier);
-            for (int k = 0; k < rays; ++k) {
-                float an = float(time) * 0.25f + float(k) * 2 * kPi / float(rays);
-                ImVec2 tip(c.x + std::cos(an) * half.x * reach, a.y + std::sin(an) * half.x * 0.5f * reach);
-                dl->AddTriangleFilled(ImVec2(c.x - 6, a.y + 2), tip, ImVec2(c.x + 6, a.y + 2), alpha(col::gold, glow * t));
+        // Победа: за плашкой расходятся золотые лучи.
+        if (r.won)
+            for (int k = 0; k < 14; ++k) {
+                float an = float(time) * 0.25f + float(k) * kPi / 7;
+                ImVec2 tip(c.x + std::cos(an) * half.x * 1.3f, a.y + std::sin(an) * half.x * 0.5f);
+                dl->AddTriangleFilled(ImVec2(c.x - 6, a.y + 2), tip, ImVec2(c.x + 6, a.y + 2), alpha(col::gold, 0.06f * t));
             }
-        }
-        // Великая и легендарная победа: плашка пульсирует золотым ореолом.
-        if (r.won && b.tier >= 5) {
-            float pulse = 0.5f + 0.5f * std::sin(time * 3.0f);
-            for (int k = 1; k <= 3; ++k)
-                dl->AddRect(ImVec2(a.x - px(4) * float(k), a.y - px(4) * float(k)), ImVec2(z.x + px(4) * float(k), z.y + px(4) * float(k)),
-                            alpha(col::gold, (0.22f - 0.06f * float(k)) * (0.6f + 0.4f * pulse) * t), 10.0f + 4 * float(k), 2.0f);
-        }
-        if (stars > 0)
-            for (int k = 0; k < b.tier; ++k) {
-                float pop = std::clamp((age - 0.12f * float(k)) / 0.25f, 0.0f, 1.0f);
-                if (pop <= 0) continue;
-                float sx = c.x + (float(k) - float(b.tier - 1) * 0.5f) * px(28);
-                float fs = 24.0f * ui_scale * (pop < 1 ? 1.6f - 0.6f * ease(pop) : 1.0f);
-                text_center(dl, fonts.regular, fs, ImVec2(sx + 1, a.y + px(24) + 1), alpha(IM_COL32(0, 0, 0, 255), 0.5f * t * pop), icon::star);
-                text_center(dl, fonts.regular, fs, ImVec2(sx, a.y + px(24)), alpha(b.tier >= 6 ? IM_COL32(255, 236, 150, 255) : col::gold, t * pop), icon::star);
-            }
-        float y = a.y + px(46) + stars;
+        float y = a.y + px(46);
         const char* verdict = r.won ? b.verdict.c_str() : "Отступление";
         float vs = 46.0f * ui_scale, vw = fonts.display->CalcTextSizeA(vs, FLT_MAX, 0, verdict).x;
         if (vw > half.x * 2 - px(48)) vs *= (half.x * 2 - px(48)) / vw;  // длинная надпись уменьшается, а не вылезает за рамку

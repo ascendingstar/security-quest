@@ -325,10 +325,9 @@ std::string reset_game(const Config& cfg, EventLog& game);
 std::string gift(EventLog& game, int gold, const std::string& reason);
 BattleResult fight(const World& w, EventLog& game, const std::string& frontier_id);
 
-// Выполненная задача — схватка с тварями Разлома: всегда победа, только анимация. Размах растёт от
-// лёгкого побочного квеста (1) до миссии сложности 5 (6): больше тварей, заклинания героя, предводитель.
+// Выполненная задача — катсцена победы над тварями Разлома (gui/cutscene.cpp). Размах растёт от
+// лёгкого побочного квеста (1) до миссии сложности 5 (6): больше тварей, заклинание героя, предводитель.
 int celebration_tier(const Task& task);
 std::vector<Stack> task_monsters(const Task& task);
-BattleResult task_skirmish(const World& w, const Task& task);
 
 }  // namespace sq::quest

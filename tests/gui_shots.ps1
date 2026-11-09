@@ -22,13 +22,16 @@ $shots = @(
     @('mission-dialog', @('--page', 'overview', '--dialog', 'mission')),
     @('battle', @('--dialog', 'battle:2.3@3.6')),
     @('edit-dialog', @('--page', 'missions', '--dialog', 'edit:M7')),
-    @('skirmish', @('--dialog', 'skirmish:5@2.6')),
-    @('skirmish-easy-end', @('--dialog', 'skirmish:1@40')),
-    @('skirmish-quest-end', @('--dialog', 'skirmish:3@40')),
-    @('skirmish-boss', @('--dialog', 'skirmish:5@8.5')),
-    @('skirmish-legend', @('--dialog', 'skirmish:6@9.45')),
-    @('skirmish-end', @('--dialog', 'skirmish:5@40')),
-    @('skirmish-legend-end', @('--dialog', 'skirmish:6@40'))
+    @('cutscene-easy', @('--dialog', 'cutscene:1@1.2')),
+    @('cutscene-easy-end', @('--dialog', 'cutscene:1@6')),
+    @('cutscene-clash', @('--dialog', 'cutscene:3@1.6')),
+    @('cutscene-fireball', @('--dialog', 'cutscene:3@2.3')),
+    @('cutscene-quest-end', @('--dialog', 'cutscene:3@7')),
+    @('cutscene-lightning', @('--dialog', 'cutscene:4@2.7')),
+    @('cutscene-legend', @('--dialog', 'cutscene:6@1.6')),
+    @('cutscene-boss', @('--dialog', 'cutscene:6@4.05')),
+    @('cutscene-victory', @('--dialog', 'cutscene:6@4.9')),
+    @('cutscene-legend-end', @('--dialog', 'cutscene:6@9'))
 )
 foreach ($s in $shots) {
     $args = @('--screenshot', "`"$Out\$($s[0]).png`"", '--size', $Size) + $s[1]
