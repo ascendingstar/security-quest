@@ -68,8 +68,10 @@ int EventLog::load() {
     std::stringstream ss;
     ss << in.rdbuf();
 
+    std::string text = ss.str();
+    if (starts_with(text, "\xEF\xBB\xBF")) text.erase(0, 3);  // журнал, сохранённый Блокнотом
     int broken = 0;
-    for (auto& line : split(ss.str(), '\n')) {
+    for (auto& line : split(text, '\n')) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         if (line.empty()) continue;
         auto parts = split(line, '\t');

@@ -108,6 +108,15 @@ private:
         std::string title;
         int difficulty = 1;
     } side_form_;
+    // Правка задачи: всплывающее окно из карточки.
+    struct EditForm {
+        bool open = false;
+        std::string id, title;
+        bool side = false;
+        int difficulty = 1;
+        int plan = 0;
+    } edit_form_;
+    void dialog_edit();
     std::string confirm_drop_;
     std::string history_filter_;
 
@@ -150,18 +159,15 @@ private:
         int pending_spell = -1;  // выбранное заклинание ждёт цель
         Loot loot;               // награда для победного экрана; пусто — только текст reward
         double card_shown = -1e9;  // когда появилась итоговая плашка (-1e9 — ещё нет) — для счёта наград
+        // Схватка выполненной задачи: размах 1–6 (quest::celebration_tier), 0 — обычный бой.
+        int tier = 0;
+        float flash = 0;           // белая вспышка добивающего удара
+        double next_firework = 0;  // салют над победной плашкой
+        int fireworks = 0;
     } battle_;
 
-    // Сценка выполненного побочного квеста: свиток с печатью и сундук с наградой.
-    struct QuestScene {
-        bool active = false;
-        std::string title;
-        int difficulty = 1;
-        Loot loot;
-        double born = 0;
-    } quest_scene_;
-    void quest_scene_view();
-    void celebrate(const Task& t, int level_before);  // миссия — схватка, побочный квест — сценка
+    void celebrate(const Task& t, int level_before);  // схватка с тварями и победный экран, размах — по сложности
+    void watch_task(const Task& t, const Loot& loot);
 };
 
 }  // namespace sq::gui

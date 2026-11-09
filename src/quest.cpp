@@ -346,6 +346,7 @@ std::optional<CampaignDef> parse_campaign(const std::string& text, const std::st
         float span = std::min(chapter.radius * 1.3f, 70.0f * float(n - 1));
         for (int k = 0; k < n; ++k) {
             FrontierDef& f = *list[size_t(k)];
+            f.label = std::format("{}.{}", ch + 1, k + 1);
             if (f.placed) continue;
             f.x = chapter.x + (n == 1 ? 0.0f : -span / 2 + span * float(k) / float(n - 1));
             f.y = chapter.y + (k % 2 == 0 ? 50.0f : -55.0f);
@@ -967,6 +968,12 @@ const Frontier* World::frontier(const std::string& id) const {
     return nullptr;
 }
 
+const Frontier* World::find(const std::string& s) const {
+    for (auto& f : frontiers)
+        if (f.label == s) return &f;
+    return frontier(s);
+}
+
 const Frontier* World::next() const {
     for (auto& f : frontiers)
         if (f.status == Frontier::Open) return &f;
@@ -1077,7 +1084,7 @@ World build_world(const Config& cfg, const State& st, const EventLog& game, cons
             if (!def) continue;
             if (victory && won.insert(id).second) {
                 last_victory_time = e.time;
-                add(e.time, std::format("Рубеж {} «{}» взят. {} Добыча: {} золота.", id, def->name, def->victory, def->gold), Chronicle::Good);
+                add(e.time, std::format("Рубеж {} «{}» взят. {} Добыча: {} золота.", def->label, def->name, def->victory, def->gold), Chronicle::Good);
                 // Взят последний рубеж главы — начинается следующая.
                 bool last_in_chapter = true;
                 bool after = false;
@@ -1116,6 +1123,7 @@ World build_world(const Config& cfg, const State& st, const EventLog& game, cons
     for (auto& d : campaign.frontiers) {
         Frontier f;
         f.id = d.id;
+        f.label = d.label;
         f.chapter = d.chapter;
         f.name = d.name;
         f.intro = d.intro;
@@ -1317,10 +1325,34 @@ BattleResult fight(const World& w, EventLog& game, const std::string& id) {
     record_battle(w, game, id, r);
     return r;
 }
-BattleResult mission_skirmish(const World& w, const Task& task) {
-    static const char* names[5] = {"Бесёнок Разлома", "Тень Разлома", "Гончая Разлома", "Страж Разлома", "Колосс Разлома"};
-    int d = std::clamp(task.difficulty, 1, 5);
-    if (task.side) d = std::clamp(task.difficulty, 1, 3);
+int celebration_tier(const Task& task) {
+    return task.side ? std::clamp(task.difficulty, 1, 3) : std::clamp(task.difficulty, 1, 5) + 1;
+}
+
+std::vector<Stack> task_monsters(const Task& task) {
+    // Чем больше работа, тем больше тварей, а у миссий сложности 4–5 — ещё и предводитель.
+    int tier = celebration_tier(task);
+    uint32_t color = tier <= 2 ? rgb(210, 90, 180) : tier <= 4 ? rgb(130, 110, 235) : rgb(232, 72, 64);
+    std::vector<Stack> m;
+    switch (tier) {
+        case 1: m = {monster("Бесёнок Разлома", 3, 10, 0, 0, 0, 0, 1)}; break;
+        case 2: m = {monster("Тень Разлома", 6, 15, 0, 0, 0, 0, 1)}; break;
+        case 3: m = {monster("Тень Разлома", 5, 15, 0, 0, 0, 0, 1), monster("Гончая Разлома", 4, 20, 0, 0, 0, 0, 1)}; break;
+        case 4: m = {monster("Гончая Разлома", 6, 20, 0, 0, 0, 0, 1), monster("Страж Разлома", 3, 40, 0, 0, 0, 0, 1)}; break;
+        case 5:
+            m = {monster("Гончая Разлома", 6, 20, 0, 0, 0, 0, 1), monster("Страж Разлома", 4, 40, 0, 0, 0, 0, 1),
+                 monster("Колосс Разлома", 1, 300, 0, 0, 0, 0, 1, false, true)};
+            break;
+        default:
+            m = {monster("Тень Разлома", 8, 15, 0, 0, 0, 0, 1), monster("Страж Разлома", 5, 40, 0, 0, 0, 0, 1),
+                 monster("Исполин Бездны", 1, 500, 0, 0, 0, 0, 1, false, true)};
+    }
+    for (auto& s : m) s.color = color;
+    return m;
+}
+
+BattleResult task_skirmish(const World& w, const Task& task) {
+    int tier = celebration_tier(task);
     BattleResult r;
     r.won = true;
     r.ours = w.army.stacks;
@@ -1333,39 +1365,49 @@ BattleResult mission_skirmish(const World& w, const Task& task) {
         r.ours.push_back(hero);
     }
     if (r.ours.size() > 4) r.ours.resize(4);
-    int groups = d >= 4 ? 2 : 1;
-    for (int g = 0; g < groups; ++g) {
-        Stack m = monster(names[d - 1], (3 + 2 * d) / groups, 10 * d, 0, 0, 0, 0, 1, false, d == 5 && g == 0);
-        if (d == 5 && g == 0) m.count = 1;
-        m.color = rgb(210, 90, 180);
-        r.theirs.push_back(m);
-    }
+    r.theirs = task_monsters(task);
     for (size_t k = 0; k < r.ours.size(); ++k) r.start[0].push_back(int(1 + 2 * k) % kRows * kCols + 3);
-    for (size_t k = 0; k < r.theirs.size(); ++k) r.start[1].push_back(int(2 + 3 * k) % kRows * kCols + 6);
-    // Разгром: отряды по очереди добивают монстров, герой помогает заклинанием.
+    for (size_t k = 0; k < r.theirs.size(); ++k)
+        r.start[1].push_back(r.theirs[k].icon == "boss" ? 4 * kCols + 8 : int(1 + 5 * k) % kRows * kCols + 6);
+
+    // Разгром: отряды по очереди добивают тварей, герой помогает заклинаниями — чем больше задача, тем чаще
+    // и мощнее. Предводителя сначала ранят, а добивает его заклинание героя.
     Rng rng(hash(task.id));
-    std::vector<int> left;
-    for (auto& m : r.theirs) left.push_back(m.count);
     int actor = 0, round = 1;
-    bool fire = w.army.spell_levels.size() > 0 && w.army.spell_levels[0] > 0;
+    auto push = [&](BattleAction a) {
+        a.side = 0;
+        a.round = round++;
+        r.actions.push_back(a);
+    };
+    auto strike = [&](int target, int damage, int kills) {
+        BattleAction a;
+        bool spell = tier >= 3 && rng.range(0, 2) == 0;
+        a.kind = spell ? BattleAction::Spell : (r.ours[size_t(actor)].ranged ? BattleAction::Ranged : BattleAction::Melee);
+        a.actor = spell ? -1 : actor;
+        a.spell = spell ? (tier >= 5 ? 3 : tier == 4 && rng.range(0, 1) ? 2 : 0) : -1;
+        a.target = target;
+        a.damage = damage;
+        a.kills = kills;
+        push(a);
+        if (!spell) actor = (actor + 1) % int(r.ours.size());
+    };
     for (size_t t = 0; t < r.theirs.size(); ++t) {
-        while (left[t] > 0) {
-            int kills = std::max(1, (left[t] + 1) / 2);
-            kills = std::min(kills, left[t]);
-            bool spell = fire && rng.range(0, 2) == 0;
-            BattleAction a;
-            a.kind = spell ? BattleAction::Spell : (r.ours[size_t(actor)].ranged ? BattleAction::Ranged : BattleAction::Melee);
-            a.side = 0;
-            a.actor = spell ? -1 : actor;
-            a.target = int(t);
-            a.damage = kills * r.theirs[t].hp;
-            a.kills = kills;
-            a.spell = spell ? 0 : -1;
-            a.round = round;
-            r.actions.push_back(a);
-            left[t] -= kills;
-            actor = (actor + 1) % int(r.ours.size());
-            ++round;
+        const Stack& m = r.theirs[t];
+        if (m.icon == "boss") {
+            for (int k = 0; k < 2; ++k) strike(int(t), m.hp / 3, 0);
+            BattleAction finisher;
+            finisher.kind = BattleAction::Spell;
+            finisher.spell = tier >= 6 ? 4 : 3;  // Печать Щита или Громоотвод
+            finisher.target = int(t);
+            finisher.damage = m.hp - 2 * (m.hp / 3);
+            finisher.kills = 1;
+            push(finisher);
+            continue;
+        }
+        for (int left = m.count; left > 0;) {
+            int kills = std::min(left, std::max(1, (left + 1) / 2));
+            strike(int(t), kills * m.hp, kills);
+            left -= kills;
         }
     }
     r.rounds = round - 1;

@@ -223,6 +223,7 @@ struct Chapter {
 
 struct FrontierDef {
     std::string id;
+    std::string label;  // номер для игрока: «глава.порядковый» — 2.3 и т. п.; id в файле может быть любым
     int chapter = 0;  // индекс в CampaignDef::chapters
     std::string name, intro, victory;
     int level = 1, armor = 0, weapon = 0, walls = 0;
@@ -269,6 +270,7 @@ struct Requirement {
 struct Frontier {
     enum Status { Locked, Open, Cleared };
     std::string id;
+    std::string label;  // см. FrontierDef::label
     int chapter = 0;
     std::string name, intro, victory;
     int min_level = 1, armor = 0, weapon = 0, walls = 0;
@@ -299,6 +301,7 @@ struct World {
     int cleared = 0;
 
     const Frontier* frontier(const std::string& id) const;
+    const Frontier* find(const std::string& label_or_id) const;  // для консоли: номер, как его видит игрок, или id
     const Frontier* next() const;  // первый открытый, ещё не взятый рубеж
     int army_count(int unit, bool elite) const;
 };
@@ -322,7 +325,10 @@ std::string reset_game(const Config& cfg, EventLog& game);
 std::string gift(EventLog& game, int gold, const std::string& reason);
 BattleResult fight(const World& w, EventLog& game, const std::string& frontier_id);
 
-// Победа над монстрами выполненной миссии: всегда победа, только анимация.
-BattleResult mission_skirmish(const World& w, const Task& task);
+// Выполненная задача — схватка с тварями Разлома: всегда победа, только анимация. Размах растёт от
+// лёгкого побочного квеста (1) до миссии сложности 5 (6): больше тварей, заклинания героя, предводитель.
+int celebration_tier(const Task& task);
+std::vector<Stack> task_monsters(const Task& task);
+BattleResult task_skirmish(const World& w, const Task& task);
 
 }  // namespace sq::quest

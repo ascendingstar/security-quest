@@ -40,7 +40,7 @@ Expect $out 'уже в истории'
 
 # --- побочные квесты --------------------------------------------------------------
 $out = Sq log 'Созвон с коллегой' лёгкий
-Expect $out 'S1 выполнено: +5 опыта · +20 золота'
+Expect $out 'S1 выполнено: +4 опыта · +15 золота'
 $out = Sq side 'Отчёт за месяц' средний
 Expect $out 'Побочный квест S2 добавлен'
 $out = Sq side 'Что-то' очень-сложный
@@ -48,6 +48,18 @@ Expect $out 'Сложность побочного квеста'
 $out = Sq mission 'Отменённая задача' 2
 $out = Sq drop M3
 Expect $out 'M3 убрана'
+$out = Sq mission 'Опечтка в назвнии' 2
+Expect $out 'Миссия M4 добавлена'
+$out = Sq edit M4 'Ревью политики паролей' 4 --week
+Expect $out 'M4 изменена: Ревью политики паролей (+55 опыта · +160 золота)'
+$out = Sq
+Expect $out 'Ревью политики паролей'
+$out = Sq edit S2 - сложный
+Expect $out 'S2 изменена: Отчёт за месяц (+20 опыта · +90 золота)'
+$out = Sq edit M4 - 9
+Expect $out 'Сложность миссии — от 1 до 5'
+$out = Sq edit M1 'Уже сделано'
+Expect $out 'уже в истории'
 $out = Sq history
 Expect $out 'Созвон с коллегой'
 if ($out.Contains('Отменённая задача')) { Write-Host '  FAIL: убранная задача попала в историю' -ForegroundColor Red; $script:failures++ }
@@ -67,7 +79,8 @@ $out = Sq game fight 1.1
 Expect $out '1.1 «Застава у старой мельницы»: победа'
 $out = Sq game
 Expect $out '1.1  Застава у старой мельницы    взят'
-Expect $out '1.2  Волчий овраг                 открыт'
+Expect $out ('1.2  {0,-28} открыт' -f 'Горящий хутор')
+Expect $out ('1.3  {0,-28} закрыт' -f 'Волчий овраг')
 
 # --- награды пересчитываются из журнала -------------------------------------------
 $before = Sq
@@ -110,17 +123,34 @@ New-Item -ItemType Directory -Force $legacy | Out-Null
 "2026-11-01T10:02:00`thire`tunit=guard`tcount=1`tgold=20`n2026-11-01T10:03:00`tbattle`tfrontier=1.1`twon=1`tlosses=" | Set-Content (Join-Path $legacy 'game.log') -Encoding UTF8
 $saved = $env:SQ_HOME; $env:SQ_HOME = $legacy
 $out = Sq game
-Expect $out 'Казна 70 золота'
+Expect $out 'Казна 90 золота'  # 30 за миссию − 20 за стражника + 80 добычи за 1.1
 Expect $out '1.1  Застава у старой мельницы    взят'
 $out = Sq --version
 Expect $out 'формат данных 1'
 Expect (Get-Content (Join-Path $legacy 'config.ini') -Raw -Encoding UTF8) 'format = 1'
 $env:SQ_HOME = $saved
 
+# --- снижение наград за квесты: старые квесты сохраняют прежнюю награду ----------------
+$old = Join-Path $Work 'old-rewards'
+New-Item -ItemType Directory -Force $old | Out-Null
+"[rewards]`nmission_xp = 10, 20, 35, 55, 80`nmission_gold = 30, 60, 100, 160, 240`nside_xp = 5, 10, 20`nside_gold = 20, 45, 90" | Set-Content (Join-Path $old 'config.ini') -Encoding UTF8
+"2026-11-01T10:00:00`ttask.add`tid=S1`tkind=side`ttitle=x`tdiff=1`n2026-11-01T10:01:00`ttask.done`tid=S1" | Set-Content (Join-Path $old 'events.log') -Encoding UTF8
+$saved = $env:SQ_HOME; $env:SQ_HOME = $old
+$out = Sq game
+Expect $out 'Казна 20 золота'
+$out = Sq log 'Новый квест' лёгкий
+Expect $out '+4 опыта · +15 золота'
+$cfgText = Get-Content (Join-Path $old 'config.ini') -Raw -Encoding UTF8
+Expect $cfgText 'side_gold_before = 20, 45, 90'
+Expect $cfgText 'side_gold = 15, 45, 90'
+$env:SQ_HOME = $saved
+
 # --- поражение без потерь и сброс игры ----------------------------------------------
 $out = Sq game hire guard 3
-$before = (Sq game) -replace '(?s).*Стражник × (\d+).*', '$1'
 $out = Sq game fight 1.2
+Expect $out '1.2 «Горящий хутор»: победа'
+$before = (Sq game) -replace '(?s).*Стражник × (\d+).*', '$1'
+$out = Sq game fight 1.3
 Expect $out 'поражение'
 $after = (Sq game) -replace '(?s).*Стражник × (\d+).*', '$1'
 if ($before -eq $after) { Write-Host '  ok: при поражении армия цела' -ForegroundColor Green }

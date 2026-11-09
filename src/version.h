@@ -2,7 +2,7 @@
 
 namespace sq {
 
-inline constexpr const char* kAppVersion = "0.4";
+inline constexpr const char* kAppVersion = "0.5";
 
 // Формат данных в data\: растёт только при несовместимых изменениях журналов.
 // Любая версия программы обязана читать все старые записи; неизвестные типы событий

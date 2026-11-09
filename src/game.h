@@ -59,8 +59,10 @@ Level level_of(int xp);
 
 const char* side_difficulty_name(int d);    // лёгкий / средний / сложный
 const char* mission_difficulty_hint(int d); // подсказка, как выбирать сложность
+const char* side_difficulty_hint(int d);    // то же для побочного квеста
 Rewards mission_rewards(const Config& cfg, int difficulty);
-Rewards side_rewards(const Config& cfg, int difficulty);
+// created — когда квест создан: квесты до снижения наград (migrate_rewards) считаются по прежней таблице.
+Rewards side_rewards(const Config& cfg, int difficulty, const std::string& created = {});
 int artifact_chance(const Config& cfg, int difficulty);  // в процентах
 
 State replay(const Config& cfg, const EventLog& log);
@@ -74,11 +76,17 @@ struct ActionResult {
 
 ActionResult init_config(Config& cfg);
 bool reload_config(Config& cfg);
+// В 0.5 снижена награда за лёгкий побочный квест. Если в config.ini стоят прежние значения по умолчанию,
+// они меняются на новые, а уже созданные квесты сохраняют прежнюю награду: казна не уходит в минус.
+void migrate_rewards(Config& cfg);
 
 // side: false — миссия (difficulty 1–5, plan day|week), true — побочный квест (difficulty 1–3).
 // При успехе message — id новой задачи.
 ActionResult add_task(EventLog& log, bool side, const std::string& title, int difficulty, const std::string& plan);
 ActionResult finish_task(EventLog& log, const State& st, const std::string& id);
 ActionResult drop_task(EventLog& log, const State& st, const std::string& id);
+// Правка активной задачи. Пустое название, difficulty 0 и пустой plan — оставить как было.
+ActionResult edit_task(EventLog& log, const State& st, const std::string& id, const std::string& title, int difficulty,
+                       const std::string& plan);
 
 }  // namespace sq

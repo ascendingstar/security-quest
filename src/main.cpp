@@ -24,6 +24,8 @@ constexpr const char* kHelp = R"(Security Quest — миссии, побочны
                                      новый побочный квест
   sq log "что сделал" <лёгкий|средний|сложный>
                                      побочный квест, который уже выполнен
+  sq edit <id> "название" [сложность] [--day|--week]
+                                     изменить задачу; название «-» — оставить прежнее
   sq done <id>                       выполнить миссию или квест (M3, S7)
   sq drop <id>                       убрать задачу без награды
   sq history [N]                     выполненные задачи
@@ -122,7 +124,7 @@ int cmd_status(const Config& cfg, const EventLog& log, const EventLog& game) {
         std::println("\nАктивных задач нет. Новая миссия: sq mission \"что сделать\" <1-5>");
 
     if (const quest::Frontier* f = w.next()) {
-        std::println("\nКампания «{}». Следующий рубеж {} «{}»", w.campaign_title, f->id, f->name);
+        std::println("\nКампания «{}». Следующий рубеж {} «{}»", w.campaign_title, f->label, f->name);
         for (auto& r : f->requirements) std::println("  {} {}", r.met ? "✓" : r.advisory ? "≈" : "✗", r.text);
         std::println("  Сила: ваша армия {} против {}", quest::army_power(w.army), quest::power_of(f->enemy.stacks));
     } else {
@@ -186,11 +188,11 @@ int cmd_game(Config& cfg, const EventLog& log, EventLog& game, const Args& a) {
     if (sub == "forge") return done(forge(w, game, forge_index(arg(1))));
     if (sub == "learn") return done(learn(w, game, spell_index(arg(1))));
     if (sub == "fight") {
-        const Frontier* f = w.frontier(arg(1));
+        const Frontier* f = w.find(arg(1));
         if (!f) return fail("Нет такого рубежа. Список: sq game");
         if (auto b = battle_blocker(w, *f); !b.empty()) return fail(b);
         BattleResult r = fight(w, game, f->id);
-        std::println("{} «{}»: {} за {} раундов", f->id, f->name, r.won ? "победа" : "поражение", r.rounds);
+        std::println("{} «{}»: {} за {} раундов", f->label, f->name, r.won ? "победа" : "поражение", r.rounds);
         for (size_t i = 0; i < r.ours.size(); ++i)
             if (r.our_losses[i]) std::println("  потери: {} −{}", r.ours[i].name, r.our_losses[i]);
         if (r.won) std::println("  {}  Добыча: {}", f->victory, f->loot.describe());
@@ -224,7 +226,7 @@ int cmd_game(Config& cfg, const EventLog& log, EventLog& game, const Args& a) {
     std::println("Рубежи:");
     for (auto& f : w.frontiers) {
         const char* status = f.status == Frontier::Cleared ? "взят" : f.status == Frontier::Open ? "открыт" : "закрыт";
-        std::println("  {}  {:<28} {:<7} сила врага {}", f.id, f.name, status, power_of(f.enemy.stacks));
+        std::println("  {:<4} {:<28} {:<7} сила врага {}", f.label, f.name, status, power_of(f.enemy.stacks));
     }
     return 0;
 }
@@ -279,6 +281,27 @@ int main() {
         std::string id = r.message;
         if (auto f = finish_task(log, replay(cfg, log), id); !f.ok) return fail(f.message);
         report_done(cfg, log, id, level_before);
+        return 0;
+    }
+    if (cmd == "edit") {
+        const char* usage = "\nИспользование: sq edit <id> \"новое название\" [сложность] [--day|--week]; название «-» — оставить прежнее";
+        const Task* t = st.find(upper_ascii(trim(arg(0))));
+        if (!t) return fail("Задача " + upper_ascii(trim(arg(0))) + " не найдена" + usage);
+        std::string title = arg(1) == "-" ? "" : arg(1);
+        int d = 0;
+        if (!arg(2).empty()) {
+            d = t->side ? side_difficulty(arg(2)) : std::atoi(arg(2).c_str());
+            if (d <= 0) return fail(std::string(t->side ? "Сложность побочного квеста: лёгкий, средний или сложный" : "Сложность миссии — от 1 до 5") + usage);
+        }
+        std::string plan = args.opt.count("week") ? "week" : args.opt.count("day") ? "day" : "";
+        auto r = edit_task(log, st, t->id, title, d, plan);
+        if (!r.ok) return fail(r.message + usage);
+        if (!r.message.empty()) {
+            std::println("{}", r.message);
+            return 0;
+        }
+        const Task* now = replay(cfg, log).find(t->id);
+        std::println("{} изменена: {} ({})", t->id, now->title, now->rewards.describe());
         return 0;
     }
     if (cmd == "done" || cmd == "drop") {

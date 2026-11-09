@@ -65,6 +65,16 @@ const char* side_difficulty_name(int d) {
     return names[std::clamp(d, 1, 3) - 1];
 }
 
+// Трудозатраты квеста подобраны так, чтобы час работы стоил примерно как на миссии 1–2.
+const char* side_difficulty_hint(int d) {
+    static const char* hints[] = {
+        "До часа: созвон, ответ коллеге, мелкая заявка",
+        "Час-три: разбор с командой, консультация, небольшой отчёт",
+        "Полдня и больше: месячный отчёт, внеплановый разбор инцидента",
+    };
+    return hints[std::clamp(d, 1, 3) - 1];
+}
+
 const char* mission_difficulty_hint(int d) {
     static const char* hints[] = {
         "Рутина до часа-двух",
@@ -105,11 +115,17 @@ Rewards mission_rewards(const Config& cfg, int d) {
     return r;
 }
 
-Rewards side_rewards(const Config& cfg, int d) {
+Rewards side_rewards(const Config& cfg, int d, const std::string& created) {
     int i = std::clamp(d, 1, 3) - 1;
     Rewards r;
-    r.xp = table(cfg, "side_xp", i, {5, 10, 20});
-    r.gold = table(cfg, "side_gold", i, {20, 45, 90});
+    std::string since = cfg.ini.get("rewards", "side_since");
+    if (!created.empty() && !since.empty() && created < since) {
+        r.xp = table(cfg, "side_xp_before", i, {5, 10, 20});
+        r.gold = table(cfg, "side_gold_before", i, {20, 45, 90});
+        return r;
+    }
+    r.xp = table(cfg, "side_xp", i, {4, 10, 20});
+    r.gold = table(cfg, "side_gold", i, {15, 45, 90});
     return r;
 }
 
@@ -135,8 +151,15 @@ State replay(const Config& cfg, const EventLog& log) {
             t.difficulty = std::atoi(e.get("diff").c_str());
             t.plan = e.get("plan");
             t.created = e.time;
-            t.rewards = t.side ? side_rewards(cfg, t.difficulty) : mission_rewards(cfg, t.difficulty);
+            t.rewards = t.side ? side_rewards(cfg, t.difficulty, t.created) : mission_rewards(cfg, t.difficulty);
             st.tasks.push_back(t);
+        } else if (e.type == "task.edit") {
+            Task* t = find(e.get("id"));
+            if (!t || t->status != Task::Active) continue;
+            if (auto title = e.get("title"); !title.empty()) t->title = title;
+            if (int diff = std::atoi(e.get("diff").c_str()); diff > 0) t->difficulty = std::clamp(diff, 1, t->side ? 3 : 5);
+            if (auto plan = e.get("plan"); !plan.empty() && !t->side) t->plan = plan;
+            t->rewards = t->side ? side_rewards(cfg, t->difficulty, t->created) : mission_rewards(cfg, t->difficulty);
         } else if (e.type == "task.done") {
             Task* t = find(e.get("id"));
             if (!t || t->status != Task::Active) continue;
@@ -175,7 +198,26 @@ ActionResult init_config(Config& cfg) {
         if (!out) return ActionResult::fail("Не удалось создать " + from_path(cfg.config_file()));
     }
     reload_config(cfg);
-    return {true, check_data_format(cfg)};  // message — предупреждение о слишком новых данных
+    std::string warning = check_data_format(cfg);
+    if (warning.empty()) migrate_rewards(cfg);
+    return {true, warning};  // message — предупреждение о слишком новых данных
+}
+
+void migrate_rewards(Config& cfg) {
+    auto same = [](std::string a, std::string b) {
+        std::erase(a, ' ');
+        std::erase(b, ' ');
+        return a == b;
+    };
+    std::string xp = cfg.ini.get("rewards", "side_xp"), gold = cfg.ini.get("rewards", "side_gold");
+    if (!same(xp, "5,10,20") || !same(gold, "20,45,90") || !cfg.ini.get("rewards", "side_since").empty()) return;
+    fs::path file = cfg.config_file();
+    set_ini_value(file, "rewards", "side_since", now_iso());
+    set_ini_value(file, "rewards", "side_gold_before", gold);
+    set_ini_value(file, "rewards", "side_xp_before", xp);
+    set_ini_value(file, "rewards", "side_gold", "15, 45, 90");
+    set_ini_value(file, "rewards", "side_xp", "4, 10, 20");
+    reload_config(cfg);
 }
 
 bool reload_config(Config& cfg) {
@@ -223,6 +265,29 @@ ActionResult finish_task(EventLog& log, const State& st, const std::string& id) 
 
 ActionResult drop_task(EventLog& log, const State& st, const std::string& id) {
     return close_task(log, st, id, "task.drop");
+}
+
+ActionResult edit_task(EventLog& log, const State& st, const std::string& id_arg, const std::string& title_arg, int difficulty,
+                       const std::string& plan) {
+    std::string id = upper_ascii(trim(id_arg));
+    const Task* t = st.find(id);
+    if (!t) return ActionResult::fail("Задача " + id + " не найдена");
+    if (t->status != Task::Active) return ActionResult::fail("Задача " + id + " уже в истории, её не изменить");
+    std::string title = trim(title_arg);
+    if (title.size() > 300) return ActionResult::fail("Слишком длинное название");
+    if (t->side && (difficulty < 0 || difficulty > 3)) return ActionResult::fail("Сложность побочного квеста: лёгкий, средний или сложный");
+    if (!t->side && (difficulty < 0 || difficulty > 5)) return ActionResult::fail("Сложность миссии — от 1 до 5");
+
+    // В событие попадает только изменённое. Старые версии программы такие события пропускают.
+    Event e;
+    e.type = "task.edit";
+    e.set("id", id);
+    if (!title.empty() && title != t->title) e.set("title", title);
+    if (difficulty > 0 && difficulty != t->difficulty) e.set("diff", std::to_string(difficulty));
+    if (!t->side && (plan == "day" || plan == "week") && plan != t->plan) e.set("plan", plan);
+    if (e.fields.size() == 1) return {true, "Ничего не изменилось"};
+    if (!log.append(std::move(e))) return ActionResult::fail("Не удалось записать событие");
+    return {};
 }
 
 }  // namespace sq

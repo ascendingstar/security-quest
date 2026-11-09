@@ -102,13 +102,16 @@ void App::celebrate(const Task& t, int level_before) {
     }
     int after = level_of(st_.earned.xp).level;
     if (after > level_before) loot.level_up = after;
-    if (!t.side) {
-        // Миссия — схватка с монстрами Разлома и победный экран с наградой.
-        watch(quest::mission_skirmish(world_, t), "Миссия «" + t.title + "»", t.rewards.describe(), "Монстры повержены!");
-        battle_.loot = loot;
-    } else {
-        quest_scene_ = QuestScene{true, t.title, t.difficulty, loot, clock()};
-    }
+    watch_task(t, loot);
+}
+
+void App::watch_task(const Task& t, const Loot& loot) {
+    static const char* verdicts[6] = {"Тварь изгнана!", "Монстры повержены!", "Славная победа!", "Блестящая победа!", "Великая победа!",
+                                      "Легендарная победа!"};
+    int tier = quest::celebration_tier(t);
+    watch(quest::task_skirmish(world_, t), (t.side ? "Квест «" : "Миссия «") + t.title + "»", t.rewards.describe(), verdicts[tier - 1]);
+    battle_.loot = loot;
+    battle_.tier = tier;
 }
 
 void App::tick() {
@@ -131,12 +134,12 @@ void App::tick() {
 }
 
 bool App::busy() const {
-    return !toasts_.empty() || battle_.active || quest_scene_.active || (page == Page::Campaign && window_visible);
+    return !toasts_.empty() || battle_.active || (page == Page::Campaign && window_visible);
 }
 
 int App::frame_cap_ms() const {
     // Бою и сценкам нужна плавность, а дрейфу тумана на карте хватает 30 кадров в секунду.
-    return battle_.active || quest_scene_.active || !toasts_.empty() ? 0 : 33;
+    return battle_.active || !toasts_.empty() ? 0 : 33;
 }
 
 void App::toast(std::string title, std::string text, ImU32 color) {
@@ -146,6 +149,9 @@ void App::toast(std::string title, std::string text, ImU32 color) {
 
 void App::open_dialog(const std::string& name) {
     if (name == "mission") mission_form_.open = true;
+    // edit:<id> — окно правки задачи (для снимков).
+    if (starts_with(name, "edit:"))
+        if (const Task* t = st_.find(name.substr(5))) edit_form_ = EditForm{true, t->id, t->title, t->side, t->difficulty, t->plan == "week" ? 1 : 0};
     if (starts_with(name, "select:")) {
         page = Page::Campaign;
         selected_frontier_ = name.substr(7);
@@ -181,21 +187,22 @@ void App::open_dialog(const std::string& name) {
         start_training();
         battle_.speed = 60;
     }
-    if (starts_with(name, "skirmish@")) {
+    // skirmish[:<размах 1–6>]@<ход> — схватка выполненной задачи, остановленная на нужном ходе (для снимков).
+    if (starts_with(name, "skirmish")) {
+        auto at = name.find('@');
+        int tier = name.size() > 9 && name[8] == ':' ? std::clamp(std::atoi(name.c_str() + 9), 1, 6) : 5;
         Task t;
-        t.id = "M0";
-        t.title = "Ревью модуля авторизации";
-        t.difficulty = 4;
-        t.rewards = mission_rewards(cfg_, 4);
-        watch(quest::mission_skirmish(world_, t), "Миссия «" + t.title + "»", t.rewards.describe(), "Монстры повержены!");
-        battle_.progress = std::strtof(name.c_str() + 9, nullptr);
+        t.id = std::format("M{}", tier);
+        t.side = tier <= 3;
+        t.difficulty = t.side ? tier : tier - 1;
+        t.title = t.side ? "Созвон с коллегой по интеграции" : "Ревью модуля авторизации";
+        t.rewards = t.side ? side_rewards(cfg_, t.difficulty) : mission_rewards(cfg_, t.difficulty);
+        Loot loot{t.rewards.xp, t.rewards.gold, "", "", 0};
+        if (tier >= 5) loot = Loot{t.rewards.xp, t.rewards.gold, "Корона Хранителя", "+1 к атаке, защите и магии", 3};
+        watch_task(t, loot);
+        battle_.progress = at == std::string::npos ? 0 : std::strtof(name.c_str() + at + 1, nullptr);
         battle_.speed = 0.0001f;
-        battle_.loot = Loot{t.rewards.xp, t.rewards.gold, "Корона Хранителя", "+1 к атаке и защите армии", 3};
         battle_.card_shown = clock() - 3;  // на снимке награда уже досчитана
-    }
-    // quest@<секунды> — сценка побочного квеста на нужном моменте (для снимков).
-    if (starts_with(name, "quest@")) {
-        quest_scene_ = QuestScene{true, "Созвон с коллегой по интеграции", 2, Loot{10, 45, "", "", 0}, clock() - std::strtod(name.c_str() + 6, nullptr)};
     }
 }
 
@@ -230,9 +237,7 @@ void App::frame() {
     }
     ImGui::BeginChild("page", ImVec2(0, 0));
     ImGui::PushStyleColor(ImGuiCol_ChildBg, alpha(col::panel, 0.94f));  // вложенные панели (карта, летопись) — на камне
-    if (quest_scene_.active) {
-        quest_scene_view();
-    } else if (battle_.active) {
+    if (battle_.active) {
         battle_view();
     } else {
         switch (page) {
@@ -250,6 +255,7 @@ void App::frame() {
     ImGui::EndChild();
     ImGui::PopStyleColor();
     dialog_mission();
+    dialog_edit();
     ImGui::End();
     draw_toasts();
 }
@@ -360,7 +366,6 @@ void App::draw_sidebar() {
                 toast("Отступление", "Бой прерван, армия вернулась в город", col::orange);
             }
             battle_.active = false;
-            quest_scene_.active = false;
         }
         bool hovered = ImGui::IsItemHovered();
         ImGui::PopID();

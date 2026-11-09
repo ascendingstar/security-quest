@@ -21,8 +21,14 @@ $shots = @(
     @('settings', @('--page', 'settings')),
     @('mission-dialog', @('--page', 'overview', '--dialog', 'mission')),
     @('battle', @('--dialog', 'battle:2.3@3.6')),
-    @('skirmish', @('--dialog', 'skirmish@2.6')),
-    @('skirmish-end', @('--dialog', 'skirmish@40'))
+    @('edit-dialog', @('--page', 'missions', '--dialog', 'edit:M7')),
+    @('skirmish', @('--dialog', 'skirmish:5@2.6')),
+    @('skirmish-easy-end', @('--dialog', 'skirmish:1@40')),
+    @('skirmish-quest-end', @('--dialog', 'skirmish:3@40')),
+    @('skirmish-boss', @('--dialog', 'skirmish:5@8.5')),
+    @('skirmish-legend', @('--dialog', 'skirmish:6@9.45')),
+    @('skirmish-end', @('--dialog', 'skirmish:5@40')),
+    @('skirmish-legend-end', @('--dialog', 'skirmish:6@40'))
 )
 foreach ($s in $shots) {
     $args = @('--screenshot', "`"$Out\$($s[0]).png`"", '--size', $Size) + $s[1]

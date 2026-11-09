@@ -57,7 +57,7 @@ void draw_tower(ImDrawList* dl, ImVec2 c, float s, ImU32 stone) {
 
 // Рубеж на карте: флаг (взят), скрещённые мечи или корона (открыт), тёмная метка (закрыт).
 void draw_frontier(ImDrawList* dl, ImVec2 c, float s, const Frontier& f, float time) {
-    bool boss = f.id.size() == 3 && f.id[2] == '3';
+    bool boss = std::ranges::any_of(f.enemy.stacks, [](const quest::Stack& e) { return e.icon == "boss"; });
     float size = boss ? s * 1.3f : s;
     if (f.status == Frontier::Cleared) {
         dl->AddCircleFilled(c, size, IM_COL32(30, 34, 30, 220));
@@ -346,7 +346,7 @@ void App::campaign_map() {
         if (f.id == selected_frontier_) dl->AddCircle(c, s * 2.0f, col::gold, 0, 2.0f);
         draw_frontier(dl, c, s, f, time);
         if (world_.chapters[size_t(f.chapter)].reached)
-            text_center(dl, fonts.semibold, std::clamp(13 * map_zoom_ * 1.3f, 10.0f, 15.0f) * ui_scale, ImVec2(c.x, c.y + s * 1.9f), IM_COL32(220, 214, 200, 230), f.id.c_str());
+            text_center(dl, fonts.semibold, std::clamp(13 * map_zoom_ * 1.3f, 10.0f, 15.0f) * ui_scale, ImVec2(c.x, c.y + s * 1.9f), IM_COL32(220, 214, 200, 230), f.label.c_str());
         if (hovered && std::hypot(mouse.x - c.x, mouse.y - c.y) < s * 1.5f) hover = &f;
     }
 
@@ -414,7 +414,7 @@ void App::campaign_panel() {
     dim_text("Глава %d · %s", f->chapter + 1, ch.name.c_str());
     ImGui::PushFont(fonts.display, 23.0f);
     ImGui::PushStyleColor(ImGuiCol_Text, col::gold);
-    ImGui::TextWrapped("%s. %s", f->id.c_str(), f->name.c_str());
+    ImGui::TextWrapped("%s. %s", f->label.c_str(), f->name.c_str());
     ImGui::PopStyleColor();
     ImGui::PopFont();
     const char* status = f->status == Frontier::Cleared ? "Взят" : f->status == Frontier::Open ? "Открыт" : "Закрыт";

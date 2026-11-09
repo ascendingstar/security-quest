@@ -90,17 +90,16 @@ void quest_seal(ImDrawList* dl, ImVec2 c, float r, const Task& t, ImU32 color) {
     text_center(dl, fonts.display, fs, ImVec2(c.x, c.y - r * 0.08f), IM_COL32(255, 238, 200, 255), roman[std::clamp(t.difficulty, 1, 5) - 1]);
 }
 
-// Монстры, которых победит задача: те же, что в сценке после выполнения (quest::mission_skirmish).
+// Монстры, которых победит задача: те же, что в схватке после выполнения (quest::task_monsters).
 void quest_monsters(ImDrawList* dl, ImVec2 feet, float h, const Task& t) {
-    static const char* names[5] = {"Бесёнок Разлома", "Тень Разлома", "Гончая Разлома", "Страж Разлома", "Колосс Разлома"};
-    int d = std::clamp(t.difficulty, 1, t.side ? 3 : 5);
-    quest::Stack m;
-    m.name = names[d - 1];
-    m.icon = d == 5 ? "boss" : "monster";
-    m.color = IM_COL32(210, 90, 180, 255);
-    int n = d == 5 ? 1 : d >= 3 ? 2 : 1;
+    // Предводитель — один и крупнее, иначе — до двух тварей самого грозного отряда.
+    auto foes = quest::task_monsters(t);
+    const quest::Stack& m = foes.back();
+    bool boss = m.icon == "boss";
+    int n = boss ? 1 : std::min(2, int(foes.size()));
+    int tier = quest::celebration_tier(t);
     for (int k = n - 1; k >= 0; --k)
-        draw_figure(dl, ImVec2(feet.x - float(k) * h * 0.38f, feet.y - float(k) * h * 0.06f), h * (d == 5 ? 1.15f : 0.8f + 0.06f * float(d)), m, false, 0, k);
+        draw_figure(dl, ImVec2(feet.x - float(k) * h * 0.38f, feet.y - float(k) * h * 0.06f), h * (boss ? 1.15f : 0.8f + 0.05f * float(tier)), m, false, 0, k);
 }
 
 }  // namespace
@@ -113,10 +112,10 @@ void App::task_row(const Task& t) {
     std::string done_label = std::format("{}  Выполнено", icon::check);
     float done_w = button_width(done_label.c_str());
     float seal = px(44), monster_w = px(78);
-    float buttons_w = done_w + ImGui::GetFrameHeight() + px(16);
+    float buttons_w = done_w + 2 * ImGui::GetFrameHeight() + px(18);
     // Сначала уходят монстры, а на совсем узком окне кнопки встают под название, чтобы оно не сжималось в столбик.
     float avail = ImGui::GetContentRegionAvail().x;
-    if (avail < buttons_w + monster_w + seal + px(300)) monster_w = 0;
+    if (avail < buttons_w + monster_w + seal + px(160)) monster_w = 0;
     bool narrow = avail < buttons_w + seal + px(220);
 
     ImVec2 sp = ImGui::GetCursorScreenPos();
@@ -149,13 +148,16 @@ void App::task_row(const Task& t) {
     ImGui::EndGroup();
 
     if (!narrow) {
-        quest_monsters(dl, ImVec2(right - buttons_w - px(18), sp.y + seal + px(2)), px(46), t);
+        if (monster_w > 0) quest_monsters(dl, ImVec2(right - buttons_w - px(18), sp.y + seal + px(2)), px(46), t);
         ImGui::SameLine(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - buttons_w + px(10));
         ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (seal - ImGui::GetFrameHeight()) * 0.5f);
     }
     if (accent_button(done_label.c_str(), ImVec2(done_w, 0))) complete(t.id);
     tooltip("Задача сделана: герой разгромит монстров и получит награду");
     ImGui::SameLine(0, px(4));
+    if (icon_button(icon::edit, "Изменить название, сложность или срок"))
+        edit_form_ = EditForm{true, t.id, t.title, t.side, t.difficulty, t.plan == "week" ? 1 : 0};
+    ImGui::SameLine(0, px(2));
     if (icon_button(icon::trash, "Убрать без награды")) {
         confirm_drop_ = t.id;
         ImGui::OpenPopup("drop");
@@ -241,6 +243,48 @@ void App::dialog_mission() {
     ImGui::EndPopup();
 }
 
+
+void App::dialog_edit() {
+    EditForm& f = edit_form_;
+    const char* id = "Изменить задачу";
+    if (f.open) {
+        ImGui::OpenPopup(id);
+        f.open = false;
+    }
+    ImGui::SetNextWindowSize(ImVec2(px(640), 0));
+    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    if (!ImGui::BeginPopupModal(id, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) return;
+    bool enter;
+    if (!f.side) {
+        enter = mission_fields(cfg_, f.title, f.difficulty, f.plan, ImGui::IsWindowAppearing());
+    } else {
+        if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+        ImGui::SetNextItemWidth(-1);
+        enter = ImGui::InputTextWithHint("##title", "Что нужно сделать?", &f.title, ImGuiInputTextFlags_EnterReturnsTrue);
+        ImGui::Dummy(ImVec2(0, px(2)));
+        difficulty_picker("sidediff", f.difficulty, 3);
+        ImGui::SameLine(0, px(16));
+        ImGui::AlignTextToFramePadding();
+        const Task* t = st_.find(f.id);
+        colored_text(col::gold, ("Награда: " + side_rewards(cfg_, f.difficulty, t ? t->created : "").describe()).c_str());
+        dim_text("%s", side_difficulty_hint(f.difficulty));
+    }
+    ImGui::Dummy(ImVec2(0, px(6)));
+    if ((accent_button("Сохранить", ImVec2(px(150), px(36))) || enter) && !trim(f.title).empty()) {
+        ActionResult r = edit_task(*log_, st_, f.id, f.title, f.difficulty, f.side ? "" : f.plan ? "week" : "day");
+        if (r.ok) {
+            refresh();
+            if (r.message.empty()) toast("Задача изменена", trim(f.title), col::blue);
+            ImGui::CloseCurrentPopup();
+        } else {
+            toast("Не получилось", r.message, col::red);
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Отмена", ImVec2(px(110), px(36))) || ImGui::IsKeyPressed(ImGuiKey_Escape)) ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
+}
+
 // ---------------------------------------------------------------------------
 // Сводка
 
@@ -296,7 +340,7 @@ void App::page_overview() {
         dim_text("Глава %d · %s", f->chapter + 1, world_.chapters[size_t(f->chapter)].name.c_str());
         ImGui::PushFont(fonts.display, 23.0f);
         ImGui::PushStyleColor(ImGuiCol_Text, col::gold);
-        ImGui::TextWrapped("Рубеж %s: %s", f->id.c_str(), f->name.c_str());
+        ImGui::TextWrapped("Рубеж %s: %s", f->label.c_str(), f->name.c_str());
         ImGui::PopStyleColor();
         ImGui::PopFont();
         {
@@ -412,6 +456,7 @@ void App::page_sides() {
     ImGui::SameLine(0, px(16));
     ImGui::AlignTextToFramePadding();
     colored_text(col::gold, ("Награда: " + side_rewards(cfg_, side_form_.difficulty).describe()).c_str());
+    dim_text("%s", side_difficulty_hint(side_form_.difficulty));
     ImGui::Dummy(ImVec2(0, px(2)));
     bool has_title = !trim(side_form_.title).empty();
     ImGui::BeginDisabled(!has_title);
