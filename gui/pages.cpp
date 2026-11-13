@@ -152,7 +152,7 @@ void App::task_row(const Task& t) {
         ImGui::SameLine(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - buttons_w + px(10));
         ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (seal - ImGui::GetFrameHeight()) * 0.5f);
     }
-    if (accent_button(done_label.c_str(), ImVec2(done_w, 0))) complete(t.id);
+    if (accent_button(done_label.c_str(), ImVec2(done_w, 0))) pending_done_ = t.id;
     tooltip("Задача сделана: герой разгромит монстров и получит награду");
     ImGui::SameLine(0, px(4));
     if (icon_button(icon::edit, "Изменить название, сложность или срок"))
@@ -165,9 +165,7 @@ void App::task_row(const Task& t) {
     if (ImGui::BeginPopup("drop")) {
         ImGui::Text("Убрать «%s» без награды?", t.title.c_str());
         if (accent_button("Убрать", ImVec2(0, 0), col::red)) {
-            ActionResult r = drop_task(*log_, st_, confirm_drop_);
-            if (!r.ok) toast("Не получилось", r.message, col::red);
-            refresh();
+            pending_drop_ = confirm_drop_;
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();

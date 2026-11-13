@@ -81,7 +81,7 @@ void App::after_work(size_t first_event, int level_before) {
     }
 }
 
-void App::complete(const std::string& id) {
+void App::complete(std::string id) {
     int level_before = level_of(st_.earned.xp).level;
     ActionResult r = finish_task(*log_, st_, id);
     if (!r.ok) {
@@ -117,6 +117,7 @@ void App::play_cutscene(const Task& t, const Loot& loot) {
     cutscene_.ours = world_.army.stacks;
     cutscene_.foes = quest::task_monsters(t);
     cutscene_.born = clock();
+    if (freeze_cutscene_ >= 0) cutscene_.frozen = freeze_cutscene_;
 }
 
 void App::tick() {
@@ -154,6 +155,8 @@ void App::toast(std::string title, std::string text, ImU32 color) {
 
 void App::open_dialog(const std::string& name) {
     if (name == "mission") mission_form_.open = true;
+    // freeze@<секунды> — катсцена, которая запустится потом (например, от --click), встанет на этой секунде.
+    if (starts_with(name, "freeze@")) freeze_cutscene_ = std::strtof(name.c_str() + 7, nullptr);
     // done:<id>[@<секунды>] — выполнить задачу, как кнопкой «Выполнено», и остановить катсцену (для проверки).
     if (starts_with(name, "done:")) {
         auto at = name.find('@');
@@ -219,6 +222,12 @@ void App::open_dialog(const std::string& name) {
 // Каркас окна
 
 void App::frame() {
+    if (!pending_done_.empty()) complete(std::exchange(pending_done_, {}));
+    if (!pending_drop_.empty()) {
+        ActionResult r = drop_task(*log_, st_, std::exchange(pending_drop_, {}));
+        if (!r.ok) toast("Не получилось", r.message, col::red);
+        refresh();
+    }
     ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(vp->WorkPos);
     ImGui::SetNextWindowSize(vp->WorkSize);

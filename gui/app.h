@@ -56,7 +56,10 @@ private:
     const quest::CampaignDef& campaign() const;  // выбранная, или встроенная, если файла выбранной больше нет
     void after_work(size_t first_event, int level_before);
     void toast(std::string title, std::string text, ImU32 color);
-    void complete(const std::string& id);
+    void complete(std::string id);  // копия: refresh() пересоздаёт задачи, ссылка на t.id стала бы висячей
+    // «Выполнено» и «Убрать» из списков задач срабатывают в начале следующего кадра: список держит
+    // указатели на задачи, а выполнение их пересчитывает.
+    std::string pending_done_, pending_drop_;
 
     // каркас
     void draw_sidebar();
@@ -175,6 +178,7 @@ private:
     } cutscene_;
     void celebrate(const Task& t, int level_before);  // катсцена и победная плашка, размах — по сложности
     void play_cutscene(const Task& t, const Loot& loot);
+    float freeze_cutscene_ = -1;  // для проверки: катсцена встанет на этой секунде (freeze@)
     void cutscene_view();
 };
 

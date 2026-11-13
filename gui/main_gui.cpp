@@ -193,6 +193,7 @@ LRESULT WINAPI wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 struct Options {
     std::string screenshot, page, dialog;
     int width = 0, height = 0;
+    float click_x = -1, click_y = -1;  // --click X,Y: в режиме снимка щёлкнуть мышью перед снимком
     bool hidden = false;
 };
 
@@ -206,6 +207,7 @@ Options parse_options() {
         else if (args[i] == "--dialog") o.dialog = next();
         else if (args[i] == "--size") std::sscanf(next().c_str(), "%dx%d", &o.width, &o.height);
         else if (args[i] == "--hidden") o.hidden = true;
+        else if (args[i] == "--click") std::sscanf(next().c_str(), "%f,%f", &o.click_x, &o.click_y);
     }
     return o;
 }
@@ -330,6 +332,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
 
             ImGui_ImplDX11_NewFrame();
             ImGui_ImplWin32_NewFrame();
+            // Щелчок для проверки без рук: навести на кадре 2, нажать на 3, отпустить на 4.
+            if (shot && opt.click_x >= 0 && frame >= 2 && frame <= 4) {
+                ImGuiIO& io = ImGui::GetIO();
+                io.AddMousePosEvent(opt.click_x, opt.click_y);
+                if (frame > 2) io.AddMouseButtonEvent(0, frame == 3);
+            }
             ImGui::NewFrame();
             app.tick();
             app.frame();
