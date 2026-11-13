@@ -295,6 +295,7 @@ std::optional<CampaignDef> parse_campaign(const std::string& text, const std::st
         f.name = ini.get(sec, "name");
         f.intro = ini.get(sec, "intro");
         f.victory = ini.get(sec, "victory");
+        f.story = ini.get(sec, "story");
         if (f.name.empty()) err(sec, "нет name");
 
         auto number = [&](const char* key, int& out, int lo, int hi, int def) {
@@ -1084,7 +1085,9 @@ World build_world(const Config& cfg, const State& st, const EventLog& game, cons
             if (!def) continue;
             if (victory && won.insert(id).second) {
                 last_victory_time = e.time;
-                add(e.time, std::format("Рубеж {} «{}» взят. {} Добыча: {} золота.", def->label, def->name, def->victory, def->gold), Chronicle::Good);
+                // Взятый рубеж — сюжетная сцена летописи: заголовок рубежа, итог боя, продолжение истории.
+                add(e.time, std::format("{}{}{} Добыча: {} золота.", def->victory, def->story.empty() ? "" : " ", def->story, def->gold), Chronicle::Good,
+                    std::format("{} · {}", def->label, def->name));
                 // Взят последний рубеж главы — начинается следующая.
                 bool last_in_chapter = true;
                 bool after = false;
@@ -1128,6 +1131,7 @@ World build_world(const Config& cfg, const State& st, const EventLog& game, cons
         f.name = d.name;
         f.intro = d.intro;
         f.victory = d.victory;
+        f.story = d.story;
         f.min_level = d.level;
         f.armor = d.armor;
         f.weapon = d.weapon;

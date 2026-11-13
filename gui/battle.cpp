@@ -982,7 +982,10 @@ void App::battle_view() {
                         !r.won ? "Армия отступила без потерь" : losses.empty() ? "Без потерь" : ("Потери: " + losses).c_str());
         }
         ImGui::SetCursorScreenPos(ImVec2(c.x - px(90), z.y - px(56)));
-        if (accent_button("Дальше", ImVec2(px(180), px(38)))) b.active = false;
+        if (accent_button("Дальше", ImVec2(px(180), px(38)))) {
+            b.active = false;
+            if (r.won && !b.frontier.empty()) open_story(b.frontier);  // взятый рубеж двигает сюжет
+        }
     }
 }
 

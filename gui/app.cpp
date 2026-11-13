@@ -140,12 +140,12 @@ void App::tick() {
 }
 
 bool App::busy() const {
-    return !toasts_.empty() || battle_.active || cutscene_.active || (page == Page::Campaign && window_visible);
+    return !toasts_.empty() || battle_.active || cutscene_.active || story_.active || (page == Page::Campaign && window_visible);
 }
 
 int App::frame_cap_ms() const {
     // Бою и сценкам нужна плавность, а дрейфу тумана на карте хватает 30 кадров в секунду.
-    return battle_.active || cutscene_.active || !toasts_.empty() ? 0 : 33;
+    return battle_.active || cutscene_.active || story_.active || !toasts_.empty() ? 0 : 33;
 }
 
 void App::toast(std::string title, std::string text, ImU32 color) {
@@ -155,6 +155,12 @@ void App::toast(std::string title, std::string text, ImU32 color) {
 
 void App::open_dialog(const std::string& name) {
     if (name == "mission") mission_form_.open = true;
+    // story:<рубеж>@<секунды> — страница летописи после взятого рубежа (для снимков).
+    if (starts_with(name, "story:")) {
+        auto at = name.find('@');
+        open_story(name.substr(6, at == std::string::npos ? std::string::npos : at - 6));
+        if (at != std::string::npos) story_.frozen = std::strtof(name.c_str() + at + 1, nullptr);
+    }
     // freeze@<секунды> — катсцена, которая запустится потом (например, от --click), встанет на этой секунде.
     if (starts_with(name, "freeze@")) freeze_cutscene_ = std::strtof(name.c_str() + 7, nullptr);
     // done:<id>[@<секунды>] — выполнить задачу, как кнопкой «Выполнено», и остановить катсцену (для проверки).
@@ -257,6 +263,8 @@ void App::frame() {
     ImGui::PushStyleColor(ImGuiCol_ChildBg, alpha(col::panel, 0.94f));  // вложенные панели (карта, летопись) — на камне
     if (cutscene_.active) {
         cutscene_view();
+    } else if (story_.active) {
+        story_view();
     } else if (battle_.active) {
         battle_view();
     } else {
@@ -373,7 +381,7 @@ void App::draw_sidebar() {
     float ih = px(compact ? 38 : 44);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, px(compact ? 2 : 4)));
     for (auto& it : items) {
-        bool active = page == it.page && !battle_.active && !cutscene_.active;
+        bool active = page == it.page && !battle_.active && !cutscene_.active && !story_.active;
         ImVec2 p = ImGui::GetCursorScreenPos();
         ImGui::PushID(it.label);
         if (ImGui::InvisibleButton("nav", ImVec2(w, ih))) {
@@ -387,6 +395,7 @@ void App::draw_sidebar() {
             }
             battle_.active = false;
             cutscene_.active = false;
+            story_.active = false;
         }
         bool hovered = ImGui::IsItemHovered();
         ImGui::PopID();

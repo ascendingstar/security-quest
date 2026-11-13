@@ -180,6 +180,16 @@ private:
     void play_cutscene(const Task& t, const Loot& loot);
     float freeze_cutscene_ = -1;  // для проверки: катсцена встанет на этой секунде (freeze@)
     void cutscene_view();
+
+    // Страница летописи после взятого рубежа (story.cpp): сюжетная сцена и что дальше.
+    struct StoryPage {
+        bool active = false;
+        std::string frontier;
+        double born = 0;
+        float frozen = -1;  // для снимков: страница стоит на этой секунде
+    } story_;
+    void open_story(const std::string& frontier);
+    void story_view();
 };
 
 }  // namespace sq::gui

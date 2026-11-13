@@ -225,7 +225,7 @@ struct FrontierDef {
     std::string id;
     std::string label;  // номер для игрока: «глава.порядковый» — 2.3 и т. п.; id в файле может быть любым
     int chapter = 0;  // индекс в CampaignDef::chapters
-    std::string name, intro, victory;
+    std::string name, intro, victory, story;  // story — сюжетная сцена после победы (страница летописи)
     int level = 1, armor = 0, weapon = 0, walls = 0;
     int spell = -1;
     bool defense = false;
@@ -272,7 +272,7 @@ struct Frontier {
     std::string id;
     std::string label;  // см. FrontierDef::label
     int chapter = 0;
-    std::string name, intro, victory;
+    std::string name, intro, victory, story;  // story — сюжетная сцена после победы (страница летописи)
     int min_level = 1, armor = 0, weapon = 0, walls = 0;
     int spell = -1;
     Enemy enemy;
@@ -287,7 +287,7 @@ struct Frontier {
 struct Chronicle {
     std::string time, text;
     enum Tone { Story, Good, Bad, Chapter } tone;
-    std::string title;  // у глав, пролога и эпилога — заголовок, а text — сюжет
+    std::string title;  // у глав, пролога, эпилога и взятых рубежей — заголовок, а text — сюжет
 };
 
 struct World {

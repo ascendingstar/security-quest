@@ -486,6 +486,7 @@ void App::campaign_panel() {
             refresh();
             watch(std::move(r), name, loot, "Рубеж взят!");
             battle_.loot.gold = gold;
+            battle_.frontier = id;  // для страницы летописи после победы; автобой уже записан
         }
         ImGui::EndDisabled();
         if (ImGui::Button(std::format("{}  В город · {} золота", icon::town, world_.gold).c_str(), ImVec2(-1, 0))) page = Page::Town;
@@ -512,6 +513,23 @@ void App::campaign_chronicle() {
             ImGui::TextWrapped("%s", c.text.c_str());
             ImGui::PopFont();
             ImGui::Dummy(ImVec2(0, px(6)));
+            continue;
+        }
+        if (!c.title.empty()) {
+            // Взятый рубеж: дата и заголовок рубежа, ниже — сцена сюжета.
+            ImGui::Dummy(ImVec2(0, px(4)));
+            dim_text("%s", c.time.substr(0, 10).c_str());
+            ImGui::SameLine(px(100));
+            ImGui::PushFont(fonts.display, 18.0f);
+            colored_text(col::teal, c.title.c_str());
+            ImGui::PopFont();
+            ImGui::SetCursorPosX(px(100));
+            ImGui::PushTextWrapPos(0);
+            ImGui::PushStyleColor(ImGuiCol_Text, mix(col::teal, col::text, 0.75f));
+            ImGui::TextWrapped("%s", c.text.c_str());
+            ImGui::PopStyleColor();
+            ImGui::PopTextWrapPos();
+            ImGui::Dummy(ImVec2(0, px(4)));
             continue;
         }
         ImU32 color = c.tone == Chronicle::Good ? col::teal : c.tone == Chronicle::Bad ? col::red : col::dim;

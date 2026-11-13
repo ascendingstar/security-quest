@@ -44,6 +44,7 @@ add_executable(sq-gui WIN32
     gui/battle.cpp
     gui/reward.cpp
     gui/cutscene.cpp
+    gui/story.cpp
     gui/theme.cpp
     gui/win.cpp
     gui/resources.rc

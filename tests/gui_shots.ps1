@@ -31,7 +31,9 @@ $shots = @(
     @('cutscene-legend', @('--dialog', 'cutscene:6@1.6')),
     @('cutscene-boss', @('--dialog', 'cutscene:6@4.05')),
     @('cutscene-victory', @('--dialog', 'cutscene:6@4.9')),
-    @('cutscene-legend-end', @('--dialog', 'cutscene:6@9'))
+    @('cutscene-legend-end', @('--dialog', 'cutscene:6@9')),
+    @('story-typing', @('--dialog', 'story:1.1@2')),
+    @('story-chapter-end', @('--dialog', 'story:1.3@9'))
 )
 foreach ($s in $shots) {
     $args = @('--screenshot', "`"$Out\$($s[0]).png`"", '--size', $Size) + $s[1]
